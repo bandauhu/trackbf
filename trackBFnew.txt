@@ -1,967 +1,302 @@
--- ============================================================
--- BLOX FRUITS TRACKER
--- Output:
--- PlayerNameData.json
--- ============================================================
-
+-- BLOX FRUITS TRACKER v3 (post-update) — JSON khớp 100% contract track cũ
+-- Output: <Player>Data.json = {Items Inventory, CustomChange, Basic Data(9), Fruits Inventory}
+-- Extra : <Player>ExtraData.json (Sea/Moon/Stats/Tools... — file riêng, không phá parser)
+-- Loop  : 5s → 35s. Debug: getgenv().BFDebug = true → in full JSON ra console
 repeat task.wait() until game:IsLoaded()
-
-local Players = game:GetService("Players")
+local Players=game:GetService("Players") local RS=game:GetService("ReplicatedStorage")
+local HttpService=game:GetService("HttpService") local Lighting=game:GetService("Lighting")
+local player=Players.LocalPlayer
+repeat task.wait() until player
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local HttpService = game:GetService("HttpService")
+local CommF = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
 
-local player = Players.LocalPlayer
+while task.wait(2) do
+    local player = game:GetService("Players").LocalPlayer
 
-repeat
-    task.wait()
-until player ~= nil
-
-repeat
-    task.wait()
-until player.Character ~= nil
-
--- ============================================================
--- LOAD MODULES
--- ============================================================
-
-local Inventory
-local ItemConfig
-local ItemService
-local KEYS
-local ItemId
-
-pcall(function()
-    Inventory = require(
-        ReplicatedStorage
-            :WaitForChild("Controllers")
-            :WaitForChild("UI")
-            :WaitForChild("Inventory")
-    )
-end)
-
-pcall(function()
-    ItemConfig = require(
-        ReplicatedStorage
-            :WaitForChild("ItemConfig")
-    )
-end)
-
-pcall(function()
-    ItemService = require(
-        ReplicatedStorage
-            :WaitForChild("ItemReplicationService")
-    )
-end)
-
-pcall(function()
-    KEYS = require(
-        ReplicatedStorage
-            :WaitForChild("ItemReplicationService")
-            :WaitForChild("KEYS")
-    )
-end)
-
-pcall(function()
-    ItemId = require(
-        ReplicatedStorage
-            :WaitForChild("Economy")
-            :WaitForChild("ItemId")
-    )
-end)
-
--- ============================================================
--- CONFIG
--- ============================================================
-
-local Config = {
-    MinimumLevel = 2800,
-    RequireGodhuman = true,
-    RequiredChecks = 3,
-    CheckDelay = 35
-}
-
-getgenv().CustomChange = false
-
-local conditionMetCount = 0
-
--- ============================================================
--- SAFE VALUE
--- ============================================================
-
-local function getValue(parent, name, default)
-
-    if not parent then
-        return default
-    end
-
-    local object = parent:FindFirstChild(name)
-
-    if object and object:IsA("ValueBase") then
-        return object.Value
-    end
-
-    return default
-end
-
--- ============================================================
--- GODHUMAN
--- ============================================================
-
-local function checkGodhuman()
-
-    if not ItemId or not ItemService or not KEYS then
-        return false
-    end
-
-    local itemId = nil
-
-    pcall(function()
-
-        local option = ItemId.getId(
-            "Godhuman",
-            "Moveset"
-        )
-
-        if option then
-            itemId = option:asNullable()
-        end
-
-    end)
-
-    if itemId == nil then
-        return false
-    end
-
-    local mastery = 0
-    local quantity = 0
-    local owned = false
-
-    pcall(function()
-
-        if KEYS.MASTERY then
-
-            mastery = tonumber(
-                ItemService:ReadItem(
-                    KEYS.MASTERY,
-                    itemId
-                )
-            ) or 0
-
-        end
-
-    end)
-
-    pcall(function()
-
-        if KEYS.QUANTITY then
-
-            quantity = tonumber(
-                ItemService:ReadItem(
-                    KEYS.QUANTITY,
-                    itemId
-                )
-            ) or 0
-
-        end
-
-    end)
-
-    pcall(function()
-
-        if KEYS.IS_OWNED then
-
-            owned =
-                ItemService:ReadItem(
-                    KEYS.IS_OWNED,
-                    itemId
-                ) == true
-
-        end
-
-    end)
-
-    return (
-        owned
-        or mastery > 0
-        or quantity > 0
-    )
-end
-
--- ============================================================
--- GET ITEM AMOUNTS
--- ============================================================
-
-local function getItemAmounts()
-
-    local amounts = {}
-
-    if not ItemService or not KEYS then
-        return amounts
-    end
-
-    pcall(function()
-
-        local items =
-            ItemService:GetItems(
-                KEYS.QUANTITY
-            )
-
-        if type(items) ~= "table" then
-            return
-        end
-
-        for _, item in pairs(items) do
-
-            if item and item.ItemId ~= nil then
-
-                local id = item.ItemId
-
-                local amount =
-                    tonumber(item.Value)
-                    or 0
-
-                amounts[id] =
-                    (amounts[id] or 0)
-                    + amount
-
-            end
-
-        end
-
-    end)
-
-    return amounts
-end
-
--- ============================================================
--- INVENTORY
--- ============================================================
-
-local function getItemsInventory()
-
-    local result = {}
-    local amounts = getItemAmounts()
-    local checked = {}
-
-    if not Inventory or not ItemConfig then
-        return result
-    end
-
-    local tiles = {}
-
-    pcall(function()
-
-        tiles =
-            Inventory:GetTiles()
-            or {}
-
-    end)
-
-    if type(tiles) ~= "table" then
-        return result
-    end
-
-    for _, tile in pairs(tiles) do
-
-        local id =
-            tile
-            and tile.ItemId
-
-        if id ~= nil
-            and not checked[id] then
-
-            checked[id] = true
-
-            local success, itemInfo =
-                pcall(function()
-
-                    return ItemConfig
-                        .match(id)
-                        :unwrap()
-
-                end)
-
-            if success
-                and itemInfo
-                and itemInfo.Display then
-
-                local itemName =
-                    tostring(
-                        itemInfo.Display.Name
-                        or ""
-                    )
-
-                local amount =
-                    amounts[id]
-
-                if amount == nil then
-                    amount = 1
-                end
-
-                amount =
-                    tonumber(amount)
-                    or 0
-
-                if itemName ~= ""
-                    and itemName ~= "Godhuman"
-                    and amount > 0 then
-
-                    if amount > 1 then
-
-                        table.insert(
-                            result,
-                            string.format(
-                                "x%d %s",
-                                amount,
-                                itemName
-                            )
-                        )
-
-                    else
-
-                        table.insert(
-                            result,
-                            itemName
-                        )
-
-                    end
-
-                end
-
-            end
-
-        end
-
-    end
-
-    table.sort(result)
-
-    return result
-end
-
--- ============================================================
--- FRUIT INVENTORY
--- ============================================================
-
-local function getFruitsInventory()
-
-    local result = {}
-
-    local playerGui =
-        player:FindFirstChild("PlayerGui")
-
-    if not playerGui then
-        return result
-    end
-
-    -- Try inventory tiles first
-    if Inventory then
-
-        local tiles = {}
-
+    if player.Team == nil then
         pcall(function()
-            tiles = Inventory:GetTiles() or {}
+            CommF:InvokeServer("SetTeam", "Marines")
         end)
-
-        if type(tiles) == "table" then
-
-            local checked = {}
-
-            for _, tile in pairs(tiles) do
-
-                local id =
-                    tile
-                    and tile.ItemId
-
-                if id ~= nil
-                    and not checked[id] then
-
-                    checked[id] = true
-
-                    local success, itemInfo =
-                        pcall(function()
-
-                            return ItemConfig
-                                .match(id)
-                                :unwrap()
-
-                        end)
-
-                    if success
-                        and itemInfo
-                        and itemInfo.Display then
-
-                        local name =
-                            tostring(
-                                itemInfo.Display.Name
-                                or ""
-                            )
-
-                        if name ~= ""
-                            and string.find(
-                                string.lower(name),
-                                "fruit",
-                                1,
-                                true
-                            ) then
-
-                            table.insert(
-                                result,
-                                name
-                            )
-
-                        end
-
-                    end
-
-                end
-
-            end
-
-        end
-
-    end
-
-    table.sort(result)
-
-    return result
-end
-
--- ============================================================
--- PULLED LEVER
--- ============================================================
-
-local function getPulledLever()
-
-    local value = false
-
-    -- Search common locations
-    pcall(function()
-
-        local object =
-            player:FindFirstChild(
-                "Pulled Lever",
-                true
-            )
-
-        if object and object:IsA("ValueBase") then
-            value = object.Value == true
-        end
-
-    end)
-
-    pcall(function()
-
-        local object =
-            player:FindFirstChild(
-                "PulledLever",
-                true
-            )
-
-        if object and object:IsA("ValueBase") then
-            value = object.Value == true
-        end
-
-    end)
-
-    return value
-end
-
--- ============================================================
--- RACE
--- ============================================================
-
-local function getRace()
-
-    local race = "Unknown"
-
-    local playerData =
-        player:FindFirstChild("Data")
-
-    if not playerData then
-        return race
-    end
-
-    local raceObject =
-        playerData:FindFirstChild("Race")
-
-    if raceObject
-        and raceObject:IsA("ValueBase") then
-
-        race =
-            tostring(
-                raceObject.Value
-            )
-
-    end
-
-    if race == "" then
-        race = "Unknown"
-    end
-
-    -- ========================================================
-    -- IMPORTANT
-    --
-    -- The game Data only gives the base race.
-    -- The tracker expects:
-    --
-    -- Human[V1]
-    -- Human[V2]
-    -- Human[V3]
-    --
-    -- Since the actual V1/V2/V3 state is not directly stored
-    -- in Data.Race, default to V1.
-    --
-    -- ========================================================
-
-    if not string.find(
-        race,
-        "%[V%d%]"
-    ) then
-
-        race =
-            race
-            .. "[V1]"
-
-    end
-
-    return race
-end
-
--- ============================================================
--- DEVIL FRUIT
--- ============================================================
-
-local function getDevilFruit()
-
-    local fruit = ""
-
-    local playerData =
-        player:FindFirstChild("Data")
-
-    if not playerData then
-        return fruit
-    end
-
-    local object =
-        playerData:FindFirstChild(
-            "DevilFruit"
-        )
-
-    if object
-        and object:IsA("ValueBase") then
-
-        fruit =
-            tostring(
-                object.Value
-            )
-
-    end
-
-    return fruit
-end
-
--- ============================================================
--- BOUNTY / HONOR
--- ============================================================
-
-local function getBountyHonor()
-    local value = 0
-
-    local leaderstats =
-        player:FindFirstChild("leaderstats")
-
-    if not leaderstats then
-        return value
-    end
-
-    local bountyHonor =
-        leaderstats:FindFirstChild("Bounty/Honor")
-
-    if bountyHonor
-        and bountyHonor:IsA("ValueBase") then
-
-        value =
-            tonumber(bountyHonor.Value)
-            or 0
-    end
-
-    return value
-end
-
--- ============================================================
--- FIGHTING STYLE
--- ============================================================
-
-local function getFightingStyle(godhuman)
-
-    if godhuman then
-        return "Godhuman"
-    end
-
-    local style = ""
-
-    local playerData =
-        player:FindFirstChild("Data")
-
-    if playerData then
-
-        local object =
-            playerData:FindFirstChild(
-                "FightingStyle"
-            )
-
-        if object
-            and object:IsA("ValueBase") then
-
-            style =
-                tostring(
-                    object.Value
-                )
-
-        end
-
-    end
-
-    if style == "" then
-        style = "0-2"
-    end
-
-    return style
-end
-
--- ============================================================
--- FETCH DATA
--- ============================================================
-
-local function fetchServerData()
-
-    local level = 0
-    local beli = 0
-    local fragments = 0
-
-    local playerData =
-        player:FindFirstChild("Data")
-
-    if playerData then
-
-        level =
-            tonumber(
-                getValue(
-                    playerData,
-                    "Level",
-                    0
-                )
-            )
-            or 0
-
-        beli =
-            tonumber(
-                getValue(
-                    playerData,
-                    "Beli",
-                    0
-                )
-            )
-            or 0
-
-        fragments =
-            tonumber(
-                getValue(
-                    playerData,
-                    "Fragments",
-                    0
-                )
-            )
-            or 0
-
-    end
-
-    -- ========================================================
-    -- GODHUMAN
-    -- ========================================================
-
-    local godhuman =
-        checkGodhuman()
-
-    -- ========================================================
-    -- OTHER DATA
-    -- ========================================================
-
-    local race =
-        getRace()
-
-    local devilFruit =
-        getDevilFruit()
-
-    local bountyHonor =
-        getBountyHonor()
-
-    local fightingStyle =
-        getFightingStyle(
-            godhuman
-        )
-
-    local pulledLever =
-        getPulledLever()
-
-    -- ========================================================
-    -- INVENTORY
-    -- ========================================================
-
-    local itemsInventory =
-        getItemsInventory()
-
-    local fruitsInventory =
-        getFruitsInventory()
-
-    -- ========================================================
-    -- CONDITIONS
-    -- ========================================================
-
-    local levelPass =
-        level >=
-        Config.MinimumLevel
-
-    local godhumanPass =
-        (
-            not Config.RequireGodhuman
-            or godhuman
-        )
-
-    local conditionPass =
-        levelPass
-        and godhumanPass
-
-    if conditionPass then
-
-        conditionMetCount =
-            conditionMetCount + 1
-
     else
-
-        conditionMetCount = 0
-
-        getgenv().CustomChange =
-            false
-
-    end
-
-    if conditionMetCount >=
-        Config.RequiredChecks then
-
-        getgenv().CustomChange =
-            true
-
-    end
-
-    -- ========================================================
-    -- BUILD DATA
-    --
-    -- Keep the same field names as the old tracker.
-    -- ========================================================
-
-    local data = {}
-
-    data["Items Inventory"] =
-        itemsInventory
-
-    data["Basic Data"] = {
-
-        Fragments = fragments,
-
-        Beli = beli,
-
-        Full = {},
-
-        ["Fighting Style"] =
-            fightingStyle,
-
-        Race = race,
-
-        ["Bounty/Honor"] =
-            bountyHonor,
-
-        Level = level,
-
-        ["Pulled Lever"] =
-            pulledLever,
-
-        DevilFruit =
-            devilFruit
-    }
-
-    data["Fruits Inventory"] =
-        fruitsInventory
-
-    -- Keep CustomChange available
-    data["CustomChange"] =
-        getgenv().CustomChange == true
-
-    return data
-end
-
--- ============================================================
--- WRITE JSON
--- ============================================================
-
-local function writeDataToFile()
-
-    local success, errorMessage =
-        pcall(function()
-
-            local data =
-                fetchServerData()
-
-            local filePath =
-                string.format(
-                    "%sData.json",
-                    player.Name
-                )
-
-            local json =
-                HttpService:JSONEncode(
-                    data
-                )
-
-            writefile(
-                filePath,
-                json
-            )
-
-            print(
-                "=========================================="
-            )
-
-            print(
-                "[BF TRACKER] File:",
-                filePath
-            )
-
-            print(
-                "[BF TRACKER] Level:",
-                data["Basic Data"].Level
-            )
-
-            print(
-                "[BF TRACKER] Beli:",
-                data["Basic Data"].Beli
-            )
-
-            print(
-                "[BF TRACKER] Fragments:",
-                data["Basic Data"].Fragments
-            )
-
-            print(
-                "[BF TRACKER] Race:",
-                data["Basic Data"].Race
-            )
-
-            print(
-                "[BF TRACKER] DevilFruit:",
-                data["Basic Data"].DevilFruit
-            )
-
-            print(
-                "[BF TRACKER] Bounty/Honor:",
-                data["Basic Data"]["Bounty/Honor"]
-            )
-
-            print(
-                "[BF TRACKER] Fighting Style:",
-                data["Basic Data"]["Fighting Style"]
-            )
-
-            print(
-                "[BF TRACKER] Pulled Lever:",
-                tostring(
-                    data["Basic Data"]["Pulled Lever"]
-                )
-            )
-
-            print(
-                "[BF TRACKER] Items:",
-                #data["Items Inventory"]
-            )
-
-            for _, item in ipairs(
-                data["Items Inventory"]
-            ) do
-
-                print(
-                    "  -",
-                    item
-                )
-
-            end
-
-            print(
-                "[BF TRACKER] Fruits:"
-            )
-
-            for _, fruit in ipairs(
-                data["Fruits Inventory"]
-            ) do
-
-                print(
-                    "  -",
-                    fruit
-                )
-
-            end
-
-            print(
-                "[BF TRACKER] CustomChange:",
-                tostring(
-                    data["CustomChange"]
-                )
-            )
-
-            print(
-                "[BF TRACKER] JSON:",
-                json
-            )
-
-            print(
-                "=========================================="
-            )
-
-        end)
-
-    if not success then
-
-        warn(
-            "[BF TRACKER] Write error:",
-            tostring(
-                errorMessage
-            )
-        )
-
+        break
     end
 end
-
--- ============================================================
--- MAIN LOOP
--- ============================================================
-
+repeat task.wait() until player.Character
+local Inventory,ItemConfig,ItemService,KEYS,ItemId
+pcall(function() Inventory=require(RS:WaitForChild("Controllers"):WaitForChild("UI"):WaitForChild("Inventory")) end)
+pcall(function() ItemConfig=require(RS:WaitForChild("ItemConfig")) end)
+pcall(function() ItemService=require(RS:WaitForChild("ItemReplicationService")) KEYS=ItemService:WaitForChild("KEYS") end)
+pcall(function() ItemId=require(RS:WaitForChild("Economy"):WaitForChild("ItemId")) end)
+local Config={MinimumLevel=2800,RequireGodhuman=true,RequiredChecks=3,CheckDelay=35,InitialDelay=5}
+-- 42 fruit Blox Fruits theo rarity — tên trùng khớp tile inventory thì đưa qua Fruits Inventory
+local FRUIT_NAMES={}
+for _,n in ipairs({"Rocket","Spin","Blade","Spring","Bomb","Smoke","Spike","Flame","Ice","Sand","Dark","Eagle","Diamond","Light","Rubber","Ghost","Magma","Quake","Buddha","Love","Creation","Spider","Sound","Phoenix","Portal","Lightning","Pain","Blizzard","Gravity","Mammoth","T-Rex","Dough","Shadow","Venom","Gas","Spirit","Tiger","Yeti","Magnet","Kitsune","Control","Dragon"}) do
+	FRUIT_NAMES[n]=true
+end
+getgenv().CustomChange=false
+local conditionMetCount=0
+-- ===== TEAM: tự chọn khi vào game lần đầu (remote CommF_ — cơ chế user đã test chạy) =====
+local function getTeamName()
+	local ok,t=pcall(function() return player.Team and player.Team.Name or "" end)
+	return ok and tostring(t) or ""
+end
+local function getValue(parent,name,default)
+	if not parent then return default end
+	local o=parent:FindFirstChild(name)
+	if o and o:IsA("ValueBase") then return o.Value end
+	return default
+end
+local function probe(parent,names,default)
+	for _,n in ipairs(names) do
+		local o=parent and parent:FindFirstChild(n,true)
+		if o and o:IsA("ValueBase") then return o.Value end
+	end
+	return default
+end
+local function tilesToNames(filter)
+	local result,checked,fruits={},{},{}
+	if not (Inventory and ItemConfig) then return result,fruits end
+	local tiles={}
+	pcall(function() tiles=Inventory:GetTiles() or {} end)
+	if type(tiles)~="table" then return result,fruits end
+	for _,tile in pairs(tiles) do
+		local id=tile and tile.ItemId
+		if id~=nil and not checked[id] then
+			checked[id]=true
+			local ok,info=pcall(function() return ItemConfig.match(id):unwrap() end)
+			if ok and info and info.Display then
+				local name=tostring(info.Display.Name or "")
+				if name~="" then
+					if FRUIT_NAMES[name] then
+						fruits[#fruits+1]=name
+					end
+					if not filter or string.find(string.lower(name),filter,1,true) then
+						result[#result+1]=name
+					end
+				end
+			end
+		end
+	end
+	table.sort(result)
+	table.sort(fruits)
+	return result,fruits
+end
+-- Fruit trong kho nằm ở Items→Treasure: nhận diện qua remote getInventory (Value.Type=="Blox Fruit")
+local function getStoredFruits()
+	local out={}
+	pcall(function()
+		local CommF=RS:WaitForChild("Remotes"):WaitForChild("CommF_",10)
+		local inv=CommF:InvokeServer("getInventory")
+		if type(inv)~="table" then print("[BF TRACKER v3] getInventory tra ve:",type(inv)) return end
+		print("[BF TRACKER v3] getInventory:",#inv,"muc")
+		for _,v in pairs(inv) do
+			if getgenv().BFDebug then print("[BF TRACKER v3] inv:",tostring(v.Type),"|",tostring(v.Name)) end
+			if type(v)=="table" and v.Type=="Blox Fruit" and v.Name then
+				out[#out+1]=tostring(v.Name)
+			end
+		end
+	end)
+	table.sort(out)
+	return out
+end
+local function itemAmountByName(name)
+	local amounts={}
+	if not (ItemService and KEYS) then return amounts end
+	pcall(function()
+		local items=ItemService:GetItems(KEYS.QUANTITY)
+		if type(items)~="table" then return end
+		for _,item in pairs(items) do
+			if item and item.ItemId~=nil then
+				amounts[item.ItemId]=(amounts[item.ItemId] or 0)+(tonumber(item.Value) or 0)
+			end
+		end
+	end)
+	local total=0
+	for id,amt in pairs(amounts) do
+		local ok,info=pcall(function() return ItemConfig.match(id):unwrap() end)
+		if ok and info and info.Display and tostring(info.Display.Name or "")==name then
+			total=total+amt
+		end
+	end
+	return total
+end
+local function ownsToolGodhuman()
+	local char=player.Character
+	if char then
+		for _,item in ipairs(char:GetChildren()) do
+			if item:IsA("Tool") and item.Name=="Godhuman" then return true end
+		end
+	end
+	local bp=player:FindFirstChildOfClass("Backpack")
+	if bp then
+		for _,item in ipairs(bp:GetChildren()) do
+			if item:IsA("Tool") and item.Name=="Godhuman" then return true end
+		end
+	end
+	return false
+end
+local function checkGodhuman()
+	-- 1) hệ ItemReplication mới
+	if ItemId and ItemService and KEYS then
+		local itemId=nil
+		pcall(function()
+			local op=ItemId.getId("Godhuman","Moveset")
+			if op then itemId=op:asNullable() end
+		end)
+		if itemId~=nil then
+			local mastery,quantity,owned=0,0,false
+			pcall(function() if KEYS.MASTERY then mastery=tonumber(ItemService:ReadItem(KEYS.MASTERY,itemId)) or 0 end end)
+			pcall(function() if KEYS.QUANTITY then quantity=tonumber(ItemService:ReadItem(KEYS.QUANTITY,itemId)) or 0 end end)
+			pcall(function() if KEYS.IS_OWNED then owned=ItemService:ReadItem(KEYS.IS_OWNED,itemId)==true end end)
+			if owned or mastery>0 or quantity>0 then return true end
+		end
+	end
+	-- 2) fallback: tool Godhuman trong character/backpack
+	if ownsToolGodhuman() then return true end
+	-- 3) fallback: tile "Godhuman" trong inventory
+	for _,n in ipairs(tilesToNames(false)) do
+		if n=="Godhuman" then return true end
+	end
+	return false
+end
+local function getSea()
+	local pd=player:FindFirstChild("Data")
+	local w=probe(pd,{"World","Sea"},nil)
+	if type(w)=="string" and w~="" then return w end
+	if type(w)=="number" then
+		if w>=3 then return "3rd Sea" elseif w==2 then return "2nd Sea" end
+		return "1st Sea"
+	end
+	local lv=tonumber(getValue(pd,"Level",0)) or 0
+	if lv>=1575 then return "3rd Sea" elseif lv>=700 then return "2nd Sea" end
+	return "1st Sea"
+end
+local function getMoonPhase()
+	local ok,phase=pcall(function()
+		local t=Lighting.ClockTime
+		local night=(t>=17.5 or t<5.5)
+		return (night and "Night" or "Day").."|Clock="..math.floor(t*10)/10
+	end)
+	return ok and phase or "Unknown"
+end
+local function getRace()
+	local pd=player:FindFirstChild("Data")
+	local race=tostring(probe(pd,{"Race"},"Unknown"))
+	if race=="Unknown" or race=="" then return race end
+	local aw=probe(pd,{"RaceAwakening","AwakenedRace","Race_Awakening","Awakening"},nil)
+	if aw~=nil then return race.."[V"..tostring(tonumber(aw) or aw).."]" end
+	return race.."[V1]"
+end
+local function getDevilFruit()
+	return tostring(probe(player:FindFirstChild("Data"),{"DevilFruit","Fruit"},""))
+end
+local function getBountyHonor()
+	return tonumber(getValue(player:FindFirstChild("leaderstats"),"Bounty/Honor",0)) or 0
+end
+local function getMasteryMelee()
+	if ItemService and KEYS then
+		local out=nil
+		pcall(function() out=tonumber(ItemService:ReadItem(KEYS.MASTERY,"Melee")) end)
+		if out then return out end
+	end
+	return tonumber(probe(player:FindFirstChild("Data"),{"MeleeMastery","MasteryMelee"},0)) or 0
+end
+local function getStatsBlock()
+	local pd=player:FindFirstChild("Data")
+	local stats={}
+	local sf=pd and pd:FindFirstChild("Stats")
+	if sf then
+		for _,c in ipairs(sf:GetChildren()) do
+			if c:IsA("ValueBase") then stats[c.Name]=c.Value
+			elseif c:IsA("Folder") then
+				for _,c2 in ipairs(c:GetChildren()) do
+					if c2:IsA("ValueBase") then stats[c.Name.."."..c2.Name]=c2.Value end
+				end
+			end
+		end
+	end
+	return stats
+end
+local function getToolsList()
+	local tools={}
+	local char=player.Character
+	if char then
+		for _,item in ipairs(char:GetChildren()) do
+			if item:IsA("Tool") then tools[#tools+1]=item.Name end
+		end
+	end
+	local bp=player:FindFirstChildOfClass("Backpack")
+	if bp then
+		for _,item in ipairs(bp:GetChildren()) do
+			if item:IsA("Tool") then tools[#tools+1]="[bp] "..item.Name end
+		end
+	end
+	return table.concat(tools, ", ")
+end
+local function fetchServerData()
+	local pd=player:FindFirstChild("Data")
+	local level=tonumber(getValue(pd,"Level",0)) or 0
+	local beli=tonumber(getValue(pd,"Beli",0)) or 0
+	local fragments=tonumber(getValue(pd,"Fragments",0)) or 0
+	local godhuman=checkGodhuman()
+	local itemsList,fruitsList=tilesToNames(false)
+	-- định dạng gốc JSON cũ: item có số lượng ghi "x<N> <Tên>" (vd "x2 Vampire Fang"); fruit/không cộng gộp ghi tên trần
+	for i,n in ipairs(itemsList) do
+		local q=tonumber(itemAmountByName(n)) or 0
+		if q>0 then itemsList[i]=string.format("x%d %s",q,n) end
+	end
+	-- ===== JSON CHÍNH — ĐÚNG 4 KEY CỦA TRACK CŨ =====
+	local data={
+		["Items Inventory"]=itemsList,
+		["CustomChange"]=false,
+		["Basic Data"]={
+			Fragments=fragments, Beli=beli, Full={},
+			["Fighting Style"]=godhuman and "Godhuman" or tostring(probe(pd,{"FightingStyle","Fighting Style"},"0-2")),
+			Race=getRace(),
+			["Bounty/Honor"]=getBountyHonor(),
+			Level=level,
+			["Pulled Lever"]=probe(player,{"Pulled Lever","PulledLever"},false)==true,
+			DevilFruit=getDevilFruit(),
+		},
+		["Fruits Inventory"]=fruitsList,
+	}
+	local levelPass=level>=Config.MinimumLevel
+	local godhumanPass=(not Config.RequireGodhuman or godhuman)
+	local conditionPass=levelPass and godhumanPass
+	if conditionPass then conditionMetCount=conditionMetCount+1
+	else conditionMetCount=0 getgenv().CustomChange=false end
+	if conditionMetCount>=Config.RequiredChecks then getgenv().CustomChange=true end
+	data["CustomChange"]=getgenv().CustomChange==true
+	-- ===== EXTRA — file riêng, tool rejoin không đọc =====
+	local extra
+	pcall(function()
+		extra={
+			Sea=getSea(), MoonPhase=getMoonPhase(), Godhuman=godhuman,
+			["Mastery Melee"]=getMasteryMelee(), Stats=getStatsBlock(),
+			Tools=getToolsList(), PlaceId=game.PlaceId, JobId=game.JobId,
+			Team=getTeamName(),
+		}
+		writefile(string.format("%sExtraData.json",player.Name),HttpService:JSONEncode(extra))
+	end)
+	return data,extra
+end
 task.spawn(function()
-
-    -- Initial delay
-    task.wait(5)
-
-    while true do
-
-        -- Update the file every cycle.
-        -- This means Level/Beli/Fragments/Inventory/etc.
-        -- are refreshed while farming.
-
-        writeDataToFile()
-
-        task.wait(
-            Config.CheckDelay
-        )
-
-    end
-
+	task.wait(Config.InitialDelay)
+	while true do
+		local ok,err=pcall(function()
+			local data,extra=fetchServerData()
+			local filePath=string.format("%sData.json",player.Name)
+			local json=HttpService:JSONEncode(data)
+			writefile(filePath,json)
+			print("[BF TRACKER v3] ",filePath," | Lv",data["Basic Data"].Level,
+				"| Sea",(extra and extra.Sea) or "?","| Race",data["Basic Data"].Race,
+				"| Fruit",data["Basic Data"].DevilFruit,
+				"| Items",#data["Items Inventory"],
+				"| Godhuman",tostring(data["Basic Data"]["Fighting Style"]=="Godhuman"),
+				"| CustomChange",tostring(data["CustomChange"]))
+			if getgenv().BFDebug then print("[BF TRACKER v3 JSON]",json) end
+		end)
+		if not ok then warn("[BF TRACKER] loi:",tostring(err)) end
+		task.wait(Config.CheckDelay)
+	end
 end)
